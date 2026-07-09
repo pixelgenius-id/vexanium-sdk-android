@@ -108,7 +108,8 @@ class VexaniumApi(
     }
 
     companion object {
-        const val TOKEN_CONTRACT = "eosio.token"
+        const val SYSTEM_CONTRACT = "vexcore"
+        const val TOKEN_CONTRACT = "vex.token"
         const val NATIVE_SYMBOL = "VEX"
     }
 }
