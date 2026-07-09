@@ -1,0 +1,2 @@
+-keep class com.vexanium.sdk.** { *; }
+-keep class org.bouncycastle.** { *; }
