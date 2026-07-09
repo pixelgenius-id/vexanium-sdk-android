@@ -81,7 +81,7 @@ class VexaniumWallet(
 
     /**
      * Get all action history via Hyperion.
-     * @param filter Optional Hyperion filter, e.g. "eosio.token:transfer"
+     * @param filter Optional Hyperion filter, e.g. "vex.token:transfer"
      */
     suspend fun getActionHistory(
         filter: String? = null,

@@ -129,7 +129,7 @@ class VexaniumHyperion(
      * Get paginated actions for an account.
      *
      * @param account   Account name
-     * @param filter    Optional action filter, e.g. "eosio.token:transfer"
+     * @param filter    Optional action filter, e.g. "vex.token:transfer"
      * @param limit     Number of results (max 100 per request)
      * @param skip      Offset for pagination
      * @param after     ISO timestamp lower bound, e.g. "2024-01-01T00:00:00"

@@ -107,7 +107,7 @@ internal data class PackedAction(
 )
 
 /**
- * Pack the transfer action data for eosio.token::transfer (or vexanium.token::transfer).
+ * Pack the transfer action data for vex.token::transfer.
  */
 internal fun packTransferData(from: String, to: String, quantity: String, memo: String): ByteArray {
     val s = VexSerializer()
