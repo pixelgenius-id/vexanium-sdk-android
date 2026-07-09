@@ -8,24 +8,28 @@ import kotlinx.coroutines.withContext
  *
  * Usage:
  * ```
- * val key = VexaniumKey.fromWif("5J...")
- * val wallet = VexaniumWallet(accountName = "myaccount", key = key)
+ * val api      = VexaniumApi(nodeUrl = "https://api.vexanium.com")
+ * val hyperion = VexaniumHyperion(hyperionUrl = "https://hyperion.vexanium.com")
+ * val key      = VexaniumKey.fromWif("5J...")
+ * val wallet   = VexaniumWallet(accountName = "myaccount", key = key, api = api, hyperion = hyperion)
  *
- * val balance = wallet.getBalance()           // VexBalance
+ * val balance = wallet.getBalance()
  * val result  = wallet.transfer(VexTransferRequest("myaccount", "otheraccount", "1.0000 VEX", "memo"))
  * println(result.transactionId)
  * ```
  *
  * @param accountName  Antelope account name (e.g. "myaccount")
  * @param key          Imported private key
+ * @param api          Chain API client — supply your own node URL via VexaniumApi(nodeUrl = "...")
+ * @param hyperion     Hyperion history client — supply your own URL via VexaniumHyperion(hyperionUrl = "...")
  * @param permission   Permission level used for signing (default "active")
- * @param api          Injected API client; can pass custom nodeUrl via VexaniumApi(nodeUrl = "...")
  */
 class VexaniumWallet(
     val accountName: String,
     private val key: VexaniumKey,
+    private val api: VexaniumApi,
+    private val hyperion: VexaniumHyperion,
     private val permission: String = "active",
-    private val api: VexaniumApi = VexaniumApi(),
 ) {
 
     // ── Queries ──────────────────────────────────────────────────────────────
@@ -58,6 +62,38 @@ class VexaniumWallet(
 
     suspend fun getAccountInfo(): VexAccountInfo = withContext(Dispatchers.IO) {
         api.getAccount(accountName)
+    }
+
+    // ── History (Hyperion) ───────────────────────────────────────────────────
+
+    /**
+     * Get token transfer history via Hyperion.
+     * @param limit  Number of records per page (max 100)
+     * @param skip   Pagination offset
+     */
+    suspend fun getTransferHistory(
+        limit: Int = 20,
+        skip: Int = 0,
+        symbol: String? = null,
+    ): List<VexAction> = withContext(Dispatchers.IO) {
+        hyperion.getTransfers(accountName, symbol = symbol, limit = limit, skip = skip)
+    }
+
+    /**
+     * Get all action history via Hyperion.
+     * @param filter Optional Hyperion filter, e.g. "eosio.token:transfer"
+     */
+    suspend fun getActionHistory(
+        filter: String? = null,
+        limit: Int = 20,
+        skip: Int = 0,
+    ): List<VexAction> = withContext(Dispatchers.IO) {
+        hyperion.getActions(accountName, filter = filter, limit = limit, skip = skip)
+    }
+
+    /** Get a specific transaction by ID. */
+    suspend fun getTransaction(txId: String): VexTransaction = withContext(Dispatchers.IO) {
+        hyperion.getTransaction(txId)
     }
 
     // ── Transfers ────────────────────────────────────────────────────────────

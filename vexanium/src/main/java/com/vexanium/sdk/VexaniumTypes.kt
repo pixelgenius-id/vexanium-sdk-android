@@ -98,3 +98,63 @@ data class VexTransferRequest(
     val memo: String = "",
     val permission: String = "active",
 )
+
+// ── Hyperion history models ───────────────────────────────────────────────────
+
+data class VexAction(
+    val transactionId: String,
+    val blockNum: Long,
+    val timestamp: String,
+    val contract: String,
+    val action: String,
+    val from: String,
+    val to: String,
+    val quantity: String,
+    val symbol: String,
+    val memo: String,
+    val irreversible: Boolean,
+) {
+    companion object {
+        fun from(json: JSONObject): VexAction {
+            val act = json.optJSONObject("act") ?: JSONObject()
+            val data = act.optJSONObject("data") ?: JSONObject()
+            val qty = data.optString("quantity", "0 ").trim()
+            val parts = qty.split(" ")
+            return VexAction(
+                transactionId = json.optString("trx_id", ""),
+                blockNum = json.optLong("block_num", 0),
+                timestamp = json.optString("@timestamp", ""),
+                contract = act.optString("account", ""),
+                action = act.optString("name", ""),
+                from = data.optString("from", ""),
+                to = data.optString("to", ""),
+                quantity = parts[0],
+                symbol = parts.getOrElse(1) { "" },
+                memo = data.optString("memo", ""),
+                irreversible = json.optBoolean("irreversible", false),
+            )
+        }
+    }
+}
+
+data class VexTransaction(
+    val transactionId: String,
+    val blockNum: Long,
+    val blockTime: String,
+    val irreversible: Boolean,
+    val actions: List<VexAction>,
+) {
+    companion object {
+        fun from(json: JSONObject): VexTransaction {
+            val actionsArr = json.optJSONArray("actions")
+            return VexTransaction(
+                transactionId = json.optString("trx_id", ""),
+                blockNum = json.optLong("block_num", 0),
+                blockTime = json.optString("@timestamp", ""),
+                irreversible = json.optBoolean("irreversible", false),
+                actions = (0 until (actionsArr?.length() ?: 0))
+                    .map { VexAction.from(actionsArr!!.getJSONObject(it)) },
+            )
+        }
+    }
+}
