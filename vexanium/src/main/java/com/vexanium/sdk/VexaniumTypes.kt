@@ -90,6 +90,22 @@ data class VexTransferResult(
     val blockTime: String,
 )
 
+data class VexTableResult(
+    val rows: List<JSONObject>,
+    val more: Boolean,
+    val nextKey: String,
+) {
+    companion object {
+        fun from(json: JSONObject) = VexTableResult(
+            rows = json.optJSONArray("rows")?.let { arr ->
+                (0 until arr.length()).map { arr.getJSONObject(it) }
+            } ?: emptyList(),
+            more = json.optBoolean("more", false),
+            nextKey = json.optString("next_key", ""),
+        )
+    }
+}
+
 data class VexTransferRequest(
     val from: String,
     val to: String,

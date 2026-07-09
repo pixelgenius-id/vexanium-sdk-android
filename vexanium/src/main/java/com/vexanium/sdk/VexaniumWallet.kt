@@ -68,15 +68,17 @@ class VexaniumWallet(
 
     /**
      * Get token transfer history via Hyperion.
-     * @param limit  Number of records per page (max 100)
-     * @param skip   Pagination offset
+     * @param contract  Token contract (default: vex.token). Pass a custom contract for ecosystem tokens.
+     * @param limit     Number of records per page (max 100)
+     * @param skip      Pagination offset
      */
     suspend fun getTransferHistory(
+        contract: String = VexaniumApi.TOKEN_CONTRACT,
+        symbol: String? = null,
         limit: Int = 20,
         skip: Int = 0,
-        symbol: String? = null,
     ): List<VexAction> = withContext(Dispatchers.IO) {
-        hyperion.getTransfers(accountName, symbol = symbol, limit = limit, skip = skip)
+        hyperion.getTransfers(accountName, contract = contract, symbol = symbol, limit = limit, skip = skip)
     }
 
     /**
@@ -94,6 +96,24 @@ class VexaniumWallet(
     /** Get a specific transaction by ID. */
     suspend fun getTransaction(txId: String): VexTransaction = withContext(Dispatchers.IO) {
         hyperion.getTransaction(txId)
+    }
+
+    /**
+     * Read rows from any smart contract table.
+     * Works for system contracts, DEX pools, NFT contracts, or any ecosystem contract.
+     */
+    suspend fun getTableRows(
+        code: String,
+        scope: String,
+        table: String,
+        limit: Int = 10,
+        lowerBound: String? = null,
+        upperBound: String? = null,
+        indexPos: Int = 1,
+        keyType: String = "",
+        reverse: Boolean = false,
+    ): VexTableResult = withContext(Dispatchers.IO) {
+        api.getTableRows(code, scope, table, limit, lowerBound, upperBound, indexPos, keyType, reverse)
     }
 
     // ── Transfers ────────────────────────────────────────────────────────────
