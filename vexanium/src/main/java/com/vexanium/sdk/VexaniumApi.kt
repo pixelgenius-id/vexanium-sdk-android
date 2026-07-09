@@ -155,7 +155,7 @@ class VexaniumHyperion(
 
     /**
      * Get token transfer history for an account.
-     * Shorthand for getActions with filter = "eosio.token:transfer".
+     * Shorthand for getActions with filter = "vex.token:transfer".
      */
     fun getTransfers(
         account: String,
@@ -164,7 +164,7 @@ class VexaniumHyperion(
         skip: Int = 0,
         sort: String = "desc",
     ): List<VexAction> {
-        val sb = StringBuilder("/v2/history/get_actions?account=$account&filter=eosio.token%3Atransfer&limit=$limit&skip=$skip&sort=$sort")
+        val sb = StringBuilder("/v2/history/get_actions?account=$account&filter=vex.token%3Atransfer&limit=$limit&skip=$skip&sort=$sort")
         if (symbol != null) sb.append("&symbol=$symbol")
         val body = get(sb.toString())
         val arr = body.optJSONArray("actions") ?: return emptyList()
