@@ -154,6 +154,92 @@ class VexaniumWallet(
             api.pushTransaction(packedTx.toVexHex(), listOf(signature))
         }
 
+    // ── Resource management ──────────────────────────────────────────────────
+
+    /** Buy RAM for [receiver] (defaults to self) specified in bytes. */
+    suspend fun buyRamBytes(bytes: Int, receiver: String = accountName): VexTransferResult =
+        pushAction(
+            contract = VexaniumApi.SYSTEM_CONTRACT,
+            actionName = "buyrambytes",
+            data = packBuyRamBytesData(accountName, receiver, bytes),
+        )
+
+    /** Stake [stakeCpu] and [stakeNet] to [receiver] (defaults to self). Quantities e.g. "1.0000 VEX". */
+    suspend fun delegateBw(
+        stakeCpu: String,
+        stakeNet: String,
+        receiver: String = accountName,
+    ): VexTransferResult = pushAction(
+        contract = VexaniumApi.SYSTEM_CONTRACT,
+        actionName = "delegatebw",
+        data = packDelegateBwData(accountName, receiver, stakeNet, stakeCpu),
+    )
+
+    /** Unstake [unstakeCpu] and [unstakeNet] from [receiver] (defaults to self). */
+    suspend fun undelegateBw(
+        unstakeCpu: String,
+        unstakeNet: String,
+        receiver: String = accountName,
+    ): VexTransferResult = pushAction(
+        contract = VexaniumApi.SYSTEM_CONTRACT,
+        actionName = "undelegatebw",
+        data = packUndelegateBwData(accountName, receiver, unstakeNet, unstakeCpu),
+    )
+
+    /** Vote for up to 30 [producers] (or set [proxy] for proxy voting). */
+    suspend fun voteProducer(
+        producers: List<String> = emptyList(),
+        proxy: String = "",
+    ): VexTransferResult = pushAction(
+        contract = VexaniumApi.SYSTEM_CONTRACT,
+        actionName = "voteproducer",
+        data = packVoteProducerData(accountName, proxy, producers),
+    )
+
+    /**
+     * Powerup NET and CPU resources.
+     * [netFrac] and [cpuFrac] are values 0..10^15 representing the fraction of network resources.
+     * [maxPayment] is the max VEX to spend, e.g. "1.0000 VEX".
+     */
+    suspend fun powerup(
+        netFrac: Long,
+        cpuFrac: Long,
+        maxPayment: String,
+        days: Int = 1,
+        receiver: String = accountName,
+    ): VexTransferResult = pushAction(
+        contract = VexaniumApi.SYSTEM_CONTRACT,
+        actionName = "powerup",
+        data = packPowerupData(accountName, receiver, days, netFrac, cpuFrac, maxPayment),
+    )
+
+    // ── Internal helpers ─────────────────────────────────────────────────────
+
+    private suspend fun pushAction(
+        contract: String,
+        actionName: String,
+        data: ByteArray,
+    ): VexTransferResult = withContext(Dispatchers.IO) {
+        val info = api.getInfo()
+        val refBlock = api.getBlock(info.lastIrreversibleBlockNum)
+        val expiration = (System.currentTimeMillis() / 1000L) + TX_EXPIRY_SECONDS
+        val action = PackedAction(
+            account = contract,
+            name = actionName,
+            authorization = listOf(VexAuthorization(accountName, permission)),
+            data = data,
+        )
+        val packedTx = packTransaction(
+            expirationEpoch = expiration,
+            refBlockNum = (refBlock.blockNum and 0xFFFF).toInt(),
+            refBlockPrefix = refBlock.refBlockPrefix,
+            actions = listOf(action),
+        )
+        val digest = vexSigningDigest(info.chainId, packedTx)
+        val signature = key.sign(digest)
+        api.pushTransaction(packedTx.toVexHex(), listOf(signature))
+    }
+
     /**
      * Build and sign a custom action without broadcasting.
      * Returns (packedTxHex, signatures) — useful for offline signing or multi-sig.

@@ -95,7 +95,7 @@ class VexaniumApi(
         val sigsArray = JSONArray().also { arr -> signatures.forEach { arr.put(it) } }
         val req = JSONObject()
             .put("signatures", sigsArray)
-            .put("compression", 0)
+            .put("compression", "none")
             .put("packed_context_free_data", "")
             .put("packed_trx", packedTrxHex)
         val body = post("/v1/chain/push_transaction", req)
@@ -123,8 +123,11 @@ class VexaniumApi(
             val obj = JSONObject(text)
             if (obj.has("error")) {
                 val err = obj.getJSONObject("error")
-                val details = err.optJSONObject("details")?.optString("message") ?: ""
-                throw VexaniumException("RPC error: ${err.optString("what")} $details".trim())
+                val detailMsg = err.optJSONArray("details")
+                    ?.optJSONObject(0)?.optString("message") ?: ""
+                val what = err.optString("what", "")
+                val msg = if (detailMsg.isNotEmpty()) detailMsg else what
+                throw VexaniumException(msg.ifEmpty { "Unknown RPC error" })
             }
             return obj
         }
@@ -226,6 +229,17 @@ class VexaniumHyperion(
     fun getTransaction(txId: String): VexTransaction {
         val body = get("/v2/history/get_transaction?id=$txId")
         return VexTransaction.from(body)
+    }
+
+    /**
+     * Look up all account names associated with a given public key.
+     * Use this to find an account name from a WIF private key import.
+     * Returns empty list if the key has no on-chain accounts.
+     */
+    fun getKeyAccounts(publicKey: String): List<String> {
+        val body = get("/v2/state/get_key_accounts?public_key=${publicKey.trim()}")
+        val arr = body.optJSONArray("account_names") ?: return emptyList()
+        return (0 until arr.length()).map { arr.getString(it) }
     }
 
     /**

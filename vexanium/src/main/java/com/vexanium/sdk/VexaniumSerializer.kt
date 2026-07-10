@@ -151,6 +151,73 @@ internal fun packTransaction(
     return s.toBytes()
 }
 
+internal fun packBuyRamBytesData(payer: String, receiver: String, bytes: Int): ByteArray {
+    val s = VexSerializer()
+    s.name(payer)
+    s.name(receiver)
+    s.uint32(bytes.toLong())
+    return s.toBytes()
+}
+
+internal fun packDelegateBwData(
+    from: String,
+    receiver: String,
+    stakeNet: String,
+    stakeCpu: String,
+    transfer: Boolean = false,
+): ByteArray {
+    val s = VexSerializer()
+    s.name(from)
+    s.name(receiver)
+    s.asset(stakeNet)
+    s.asset(stakeCpu)
+    s.uint8(if (transfer) 1 else 0)
+    return s.toBytes()
+}
+
+internal fun packUndelegateBwData(
+    from: String,
+    receiver: String,
+    unstakeNet: String,
+    unstakeCpu: String,
+): ByteArray {
+    val s = VexSerializer()
+    s.name(from)
+    s.name(receiver)
+    s.asset(unstakeNet)
+    s.asset(unstakeCpu)
+    return s.toBytes()
+}
+
+/** Producers list MUST be sorted alphabetically per Antelope consensus rules. */
+internal fun packVoteProducerData(voter: String, proxy: String, producers: List<String>): ByteArray {
+    val s = VexSerializer()
+    s.name(voter)
+    s.name(proxy)
+    val sorted = producers.sorted()
+    s.varuint32(sorted.size.toLong())
+    for (p in sorted) s.name(p)
+    return s.toBytes()
+}
+
+internal fun packPowerupData(
+    payer: String,
+    receiver: String,
+    days: Int,
+    netFrac: Long,
+    cpuFrac: Long,
+    maxPayment: String,
+): ByteArray {
+    val s = VexSerializer()
+    s.name(payer)
+    s.name(receiver)
+    s.uint32(days.toLong())
+    s.int64(netFrac)
+    s.int64(cpuFrac)
+    s.asset(maxPayment)
+    return s.toBytes()
+}
+
 internal fun isoToEpochSeconds(iso: String): Long {
     val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").apply {
         timeZone = TimeZone.getTimeZone("UTC")

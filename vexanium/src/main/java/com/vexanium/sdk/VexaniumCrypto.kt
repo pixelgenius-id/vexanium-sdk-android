@@ -4,8 +4,6 @@ import org.bouncycastle.asn1.sec.SECNamedCurves
 import org.bouncycastle.crypto.digests.RIPEMD160Digest
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.params.ECDomainParameters
-import org.bouncycastle.crypto.params.ECPrivateKeyParameters
-import org.bouncycastle.crypto.signers.ECDSASigner
 import org.bouncycastle.crypto.signers.HMacDSAKCalculator
 import java.math.BigInteger
 import java.security.MessageDigest
@@ -50,14 +48,14 @@ internal object VexBase58 {
         return ByteArray(leading) + raw
     }
 
-    /** 4-byte RIPEMD160 checksum (optionally prefixed with keyType like "K1"). */
+    /** 4-byte RIPEMD160 checksum. For K1 keys/sigs: RIPEMD160(data + keyType). */
     fun checksum(data: ByteArray, keyType: String? = null): ByteArray {
         val digest = RIPEMD160Digest()
-        if (keyType != null) {
-            val prefix = keyType.toByteArray(Charsets.US_ASCII)
-            digest.update(prefix, 0, prefix.size)
-        }
         digest.update(data, 0, data.size)
+        if (keyType != null) {
+            val suffix = keyType.toByteArray(Charsets.US_ASCII)
+            digest.update(suffix, 0, suffix.size)
+        }
         val out = ByteArray(20)
         digest.doFinal(out, 0)
         return out.copyOf(4)
@@ -94,23 +92,46 @@ class VexaniumKey(val privateKeyBytes: ByteArray) {
     /**
      * Sign a 32-byte digest.
      * Returns Antelope-encoded signature string: "SIG_K1_..."
+     *
+     * Uses RFC 6979 deterministic k via HMacDSAKCalculator.nextK() with retry loop
+     * to guarantee EOSIO canonical form (first byte of R and S must be < 0x80 and
+     * not an unnecessary leading zero).
      */
     fun sign(digest: ByteArray): String {
         val params = secp256k1()
-        val signer = ECDSASigner(HMacDSAKCalculator(SHA256Digest()))
-        signer.init(true, ECPrivateKeyParameters(privInt, params))
-        val (r, rawS) = signer.generateSignature(digest)
-        val s = if (rawS > params.n.shiftRight(1)) params.n - rawS else rawS
+        val n = params.n
+        val calculator = HMacDSAKCalculator(SHA256Digest())
+        calculator.init(n, privInt, digest)
 
-        val recId = (0..3).firstOrNull { id ->
-            tryRecoverPubKey(digest, r, s, id, params)?.contentEquals(publicKeyBytes) == true
-        } ?: error("Cannot recover public key from signature")
+        repeat(30) {
+            val k = calculator.nextK()
+            val rPoint = params.g.multiply(k).normalize()
+            if (rPoint.isInfinity) return@repeat
 
-        val sigBytes = ByteArray(65)
-        sigBytes[0] = (recId + 31).toByte()
-        r.to32Bytes().copyInto(sigBytes, 1)
-        s.to32Bytes().copyInto(sigBytes, 33)
-        return "SIG_K1_" + VexBase58.encodeCheck(sigBytes, "K1")
+            val r = rPoint.xCoord.toBigInteger().mod(n)
+            if (r.signum() == 0) return@repeat
+
+            val e = BigInteger(1, digest)
+            val kInv = k.modInverse(n)
+            var s = kInv.multiply(e.add(privInt.multiply(r))).mod(n)
+            if (s > n.shiftRight(1)) s = n.subtract(s)
+            if (s.signum() == 0) return@repeat
+
+            val rBytes = r.to32Bytes()
+            val sBytes = s.to32Bytes()
+            if (!isEosioCanonical(rBytes, sBytes)) return@repeat
+
+            val recId = (0..3).firstOrNull { id ->
+                tryRecoverPubKey(digest, r, s, id, params)?.contentEquals(publicKeyBytes) == true
+            } ?: return@repeat
+
+            val sigBytes = ByteArray(65)
+            sigBytes[0] = (recId + 31).toByte()
+            rBytes.copyInto(sigBytes, 1)
+            sBytes.copyInto(sigBytes, 33)
+            return "SIG_K1_" + VexBase58.encodeCheck(sigBytes, "K1")
+        }
+        error("Failed to generate canonical EOSIO signature")
     }
 
     companion object {
@@ -154,6 +175,14 @@ internal fun vexSigningDigest(chainId: String, packedTx: ByteArray): ByteArray {
     val msg = chainIdBytes + packedTx + ByteArray(32)
     return MessageDigest.getInstance("SHA-256").digest(msg)
 }
+
+// ── EOSIO canonical signature check ──────────────────────────────────────────
+
+private fun isEosioCanonical(r: ByteArray, s: ByteArray): Boolean =
+    (r[0].toInt() and 0x80) == 0 &&
+    !(r[0] == 0.toByte() && (r[1].toInt() and 0x80) == 0) &&
+    (s[0].toInt() and 0x80) == 0 &&
+    !(s[0] == 0.toByte() && (s[1].toInt() and 0x80) == 0)
 
 // ── Recovery helper ──────────────────────────────────────────────────────────
 
