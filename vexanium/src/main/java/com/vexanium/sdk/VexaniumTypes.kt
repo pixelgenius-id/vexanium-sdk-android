@@ -84,11 +84,56 @@ data class VexBalance(
     }
 }
 
+/**
+ * A single action trace from a submitted transaction.
+ *
+ * With `ACTION_RETURN_VALUE` enabled on the chain, contract actions can return a value
+ * that appears in the trace as [returnValueHex] (raw bytes) and, when the node was able
+ * to decode using the contract ABI, [returnValueData] (decoded JSON as a string).
+ *
+ * For actions that do not declare a return type, both fields are blank / null.
+ */
+data class VexActionTrace(
+    val contract: String,
+    val actionName: String,
+    /** Raw hex bytes of the action's return value, or "" if none. */
+    val returnValueHex: String,
+    /** Decoded return value as a JSON string, or null if the node did not decode it. */
+    val returnValueData: String?,
+    /** stdout printed by the contract action (via `print`), or "" if none. */
+    val console: String,
+) {
+    companion object {
+        fun from(json: JSONObject): VexActionTrace {
+            val act = json.optJSONObject("act") ?: JSONObject()
+            val decoded = when {
+                json.has("return_value_data") -> json.opt("return_value_data")?.toString()
+                else -> null
+            }
+            return VexActionTrace(
+                contract = act.optString("account", ""),
+                actionName = act.optString("name", ""),
+                returnValueHex = json.optString("return_value_hex_data", ""),
+                returnValueData = decoded?.takeIf { it.isNotBlank() && it != "null" },
+                console = json.optString("console", ""),
+            )
+        }
+    }
+}
+
 data class VexTransferResult(
     val transactionId: String,
     val blockNum: Long,
     val blockTime: String,
-)
+    /** Action traces returned by the node, including any ACTION_RETURN_VALUE payloads. */
+    val traces: List<VexActionTrace> = emptyList(),
+) {
+    /** First trace's raw return value hex, or null if no action returned data. */
+    val returnValueHex: String? get() = traces.firstOrNull()?.returnValueHex?.takeIf { it.isNotBlank() }
+
+    /** First trace's decoded return value (JSON string), or null if the node did not decode it. */
+    val returnValueData: String? get() = traces.firstOrNull()?.returnValueData
+}
 
 data class VexTableResult(
     val rows: List<JSONObject>,

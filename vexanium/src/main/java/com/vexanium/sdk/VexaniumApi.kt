@@ -100,10 +100,15 @@ class VexaniumApi(
             .put("packed_trx", packedTrxHex)
         val body = post("/v1/chain/push_transaction", req)
         val processed = body.optJSONObject("processed")
+        val tracesArr = processed?.optJSONArray("action_traces")
+        val traces = if (tracesArr != null) {
+            (0 until tracesArr.length()).map { VexActionTrace.from(tracesArr.getJSONObject(it)) }
+        } else emptyList()
         return VexTransferResult(
             transactionId = body.optString("transaction_id", body.optString("id", "")),
             blockNum = processed?.optLong("block_num") ?: 0L,
             blockTime = processed?.optString("block_time") ?: "",
+            traces = traces,
         )
     }
 
