@@ -135,6 +135,29 @@ data class VexTransferResult(
     val returnValueData: String? get() = traces.firstOrNull()?.returnValueData
 }
 
+/**
+ * A single fungible token held by an account, as reported by Hyperion `/v2/state/get_tokens`.
+ * Works for VEX (native) and any ecosystem token published by a token contract.
+ */
+data class VexToken(
+    val symbol: String,
+    val amount: Double,
+    val precision: Int,
+    val contract: String,
+) {
+    /** Antelope asset string, e.g. "1.5000 VEX". */
+    fun asAsset(): String = "%.${precision}f %s".format(amount, symbol)
+
+    companion object {
+        fun from(json: JSONObject) = VexToken(
+            symbol = json.optString("symbol", ""),
+            amount = json.optDouble("amount", 0.0),
+            precision = json.optInt("precision", 4),
+            contract = json.optString("contract", ""),
+        )
+    }
+}
+
 data class VexTableResult(
     val rows: List<JSONObject>,
     val more: Boolean,

@@ -248,6 +248,21 @@ class VexaniumHyperion(
     }
 
     /**
+     * Get all token balances for [account] across every indexed contract.
+     *
+     * Uses the Hyperion `/v2/state/get_tokens` endpoint, which enumerates every
+     * fungible token an account holds — VEX plus ecosystem tokens (USDT, LP tokens, etc).
+     * Returns an empty list if the endpoint is disabled or the account has no tokens.
+     */
+    fun getTokens(account: String): List<VexToken> {
+        val body = get("/v2/state/get_tokens?account=${account.trim()}")
+        val arr = body.optJSONArray("tokens") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            runCatching { VexToken.from(arr.getJSONObject(i)) }.getOrNull()
+        }
+    }
+
+    /**
      * Check Hyperion node health.
      * Returns true if the node is healthy and in sync.
      */
