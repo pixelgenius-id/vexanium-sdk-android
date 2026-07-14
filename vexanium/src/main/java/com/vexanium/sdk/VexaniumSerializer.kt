@@ -159,6 +159,13 @@ internal fun packBuyRamBytesData(payer: String, receiver: String, bytes: Int): B
     return s.toBytes()
 }
 
+internal fun packSellRamData(account: String, bytes: Long): ByteArray {
+    val s = VexSerializer()
+    s.name(account)
+    s.int64(bytes)
+    return s.toBytes()
+}
+
 internal fun packDelegateBwData(
     from: String,
     receiver: String,

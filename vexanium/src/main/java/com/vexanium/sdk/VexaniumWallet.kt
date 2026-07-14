@@ -164,6 +164,14 @@ class VexaniumWallet(
             data = packBuyRamBytesData(accountName, receiver, bytes),
         )
 
+    /** Sell [bytes] of RAM currently owned by the account. Payout is deposited as VEX. */
+    suspend fun sellRam(bytes: Long): VexTransferResult =
+        pushAction(
+            contract = VexaniumApi.SYSTEM_CONTRACT,
+            actionName = "sellram",
+            data = packSellRamData(accountName, bytes),
+        )
+
     /** Stake [stakeCpu] and [stakeNet] to [receiver] (defaults to self). Quantities e.g. "1.0000 VEX". */
     suspend fun delegateBw(
         stakeCpu: String,
