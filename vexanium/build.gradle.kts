@@ -34,9 +34,9 @@ afterEvaluate {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
-                groupId = "com.vexanium"
-                artifactId = "sdk"
-                version = "0.2.0"
+                groupId = "com.github.pixelgenius-id"
+                artifactId = "vexanium-sdk-android"
+                version = "0.2.1"
             }
         }
     }
