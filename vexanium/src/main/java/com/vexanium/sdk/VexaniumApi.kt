@@ -33,6 +33,9 @@ class VexaniumApi(
         return VexAccountInfo.from(post("/v1/chain/get_account", JSONObject().put("account_name", accountName)))
     }
 
+    fun getAbi(accountName: String): JSONObject =
+        post("/v1/chain/get_abi", JSONObject().put("account_name", accountName))
+
     /**
      * Returns balance strings like ["1.5000 VEX"].
      * Pass [symbol] to filter by token, or null for all.

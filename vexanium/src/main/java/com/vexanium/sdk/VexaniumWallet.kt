@@ -1,7 +1,9 @@
 package com.vexanium.sdk
 
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
  * High-level Vexanium wallet operations.
@@ -31,6 +33,7 @@ class VexaniumWallet(
     private val hyperion: VexaniumHyperion,
     private val permission: String = "active",
 ) {
+    private val abiCache = ConcurrentHashMap<String, JSONObject>()
 
     // ── Queries ──────────────────────────────────────────────────────────────
 
@@ -271,6 +274,24 @@ class VexaniumWallet(
         )
         val digest = vexSigningDigest(info.chainId, packedTx)
         Pair(packedTx.toVexHex(), listOf(key.sign(digest)))
+    }
+
+    /**
+     * Sign and broadcast a single Antelope action from a plain JSON data map.
+     * Fetches the contract's ABI live (cached per contract per session) to encode fields,
+     * so any contract action is supported without wallet updates.
+     */
+    suspend fun pushAntelopeAction(
+        contract: String,
+        actionName: String,
+        data: Map<String, Any?>,
+    ): VexTransferResult = withContext(Dispatchers.IO) {
+        val abi = abiCache.getOrPut(contract) { api.getAbi(contract) }
+        pushAction(
+            contract   = contract,
+            actionName = actionName,
+            data       = encodeAbiAction(abi, actionName, data),
+        )
     }
 
     // ── Utilities ────────────────────────────────────────────────────────────

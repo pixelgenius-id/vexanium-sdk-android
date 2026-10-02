@@ -1,12 +1,11 @@
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
     `maven-publish`
 }
 
 android {
     namespace = "com.vexanium.sdk"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26
@@ -17,8 +16,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions { jvmTarget = "17" }
 
     publishing {
         singleVariant("release") { withSourcesJar() }
@@ -39,7 +36,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.vexanium"
                 artifactId = "sdk"
-                version = "0.1.0"
+                version = "0.2.0"
             }
         }
     }

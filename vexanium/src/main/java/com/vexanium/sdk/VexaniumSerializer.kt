@@ -3,6 +3,8 @@ package com.vexanium.sdk
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.TimeZone
+import org.json.JSONArray
+import org.json.JSONObject
 
 // ── Binary serializer for Antelope transactions ──────────────────────────────
 
@@ -232,4 +234,164 @@ internal fun isoToEpochSeconds(iso: String): Long {
     // Drop sub-second part if present
     val clean = iso.substringBefore('.')
     return (sdf.parse(clean)?.time ?: 0L) / 1000L
+}
+
+/**
+ * Encode action data using the contract's live ABI definition.
+ * [abi] is the full response from get_abi (contains nested "abi" object with structs/actions/types).
+ */
+internal fun encodeAbiAction(abi: JSONObject, actionName: String, data: Map<String, Any?>): ByteArray {
+    val abiContent = abi.optJSONObject("abi") ?: abi
+
+    val typeAliases = mutableMapOf<String, String>()
+    abiContent.optJSONArray("types")?.let { arr ->
+        for (i in 0 until arr.length()) {
+            val t = arr.getJSONObject(i)
+            typeAliases[t.getString("new_type_name")] = t.getString("type")
+        }
+    }
+
+    val structMap = mutableMapOf<String, JSONObject>()
+    abiContent.optJSONArray("structs")?.let { arr ->
+        for (i in 0 until arr.length()) {
+            val s = arr.getJSONObject(i)
+            structMap[s.getString("name")] = s
+        }
+    }
+
+    var actionType = actionName
+    abiContent.optJSONArray("actions")?.let { arr ->
+        for (i in 0 until arr.length()) {
+            val a = arr.getJSONObject(i)
+            if (a.getString("name") == actionName) { actionType = a.getString("type"); break }
+        }
+    }
+
+    val s = VexSerializer()
+    abiEncodeStruct(s, actionType, data, structMap, typeAliases)
+    return s.toBytes()
+}
+
+private fun abiResolveType(type: String, aliases: Map<String, String>): String {
+    var t = type
+    val seen = mutableSetOf<String>()
+    while (aliases.containsKey(t) && seen.add(t)) t = aliases[t]!!
+    return t
+}
+
+private fun abiEncodeStruct(
+    s: VexSerializer,
+    typeName: String,
+    data: Map<String, Any?>,
+    structs: Map<String, JSONObject>,
+    aliases: Map<String, String>,
+) {
+    val struct = structs[typeName]
+        ?: throw IllegalArgumentException("Unknown ABI struct type: $typeName")
+    val base = struct.optString("base", "").trim()
+    if (base.isNotEmpty()) abiEncodeStruct(s, base, data, structs, aliases)
+    val fields = struct.optJSONArray("fields") ?: return
+    for (i in 0 until fields.length()) {
+        val f = fields.getJSONObject(i)
+        val name = f.getString("name")
+        abiEncodeField(s, name, abiResolveType(f.getString("type"), aliases), data[name], structs, aliases)
+    }
+}
+
+private fun abiEncodeField(
+    s: VexSerializer,
+    fieldName: String,
+    fieldType: String,
+    value: Any?,
+    structs: Map<String, JSONObject>,
+    aliases: Map<String, String>,
+) {
+    when {
+        fieldType.endsWith("[]") -> {
+            val elemType = abiResolveType(fieldType.dropLast(2), aliases)
+            val list: List<Any?> = when (value) {
+                is List<*>  -> value
+                is JSONArray -> (0 until value.length()).map { value.get(it) }
+                null        -> emptyList()
+                else        -> throw IllegalArgumentException("Expected array for '$fieldName'")
+            }
+            s.varuint32(list.size.toLong())
+            for (elem in list) abiEncodeField(s, fieldName, elemType, elem, structs, aliases)
+        }
+        fieldType.endsWith("?") -> {
+            val elemType = abiResolveType(fieldType.dropLast(1), aliases)
+            if (value == null) s.uint8(0)
+            else { s.uint8(1); abiEncodeField(s, fieldName, elemType, value, structs, aliases) }
+        }
+        else -> abiEncodeScalar(s, fieldName, fieldType, value, structs, aliases)
+    }
+}
+
+private fun abiEncodeScalar(
+    s: VexSerializer,
+    fieldName: String,
+    fieldType: String,
+    value: Any?,
+    structs: Map<String, JSONObject>,
+    aliases: Map<String, String>,
+) {
+    fun str() = value?.toString()?.ifBlank { null }
+        ?: throw IllegalArgumentException("Missing field '$fieldName' (type $fieldType)")
+    fun num() = when (value) {
+        is Number -> value.toLong()
+        is String -> value.toLongOrNull()
+            ?: throw IllegalArgumentException("Non-numeric value for '$fieldName': $value")
+        null -> throw IllegalArgumentException("Missing numeric field '$fieldName'")
+        else -> throw IllegalArgumentException("Expected number for '$fieldName'")
+    }
+    when (fieldType) {
+        "bool" -> s.uint8(when (value) {
+            is Boolean -> if (value) 1 else 0
+            is Number  -> if (value.toInt() != 0) 1 else 0
+            is String  -> if (value.lowercase() in setOf("true", "1", "yes")) 1 else 0
+            else -> 0
+        })
+        "uint8", "int8"   -> s.uint8(num().toInt())
+        "uint16", "int16" -> s.uint16(num().toInt())
+        "uint32", "int32" -> s.uint32(num())
+        "uint64"          -> s.uint64(num())
+        "int64"           -> s.int64(num())
+        "float32" -> s.uint32(java.lang.Float.floatToRawIntBits(str().toFloat()).toLong() and 0xFFFFFFFFL)
+        "float64" -> s.int64(java.lang.Double.doubleToRawLongBits(str().toDouble()))
+        "name"    -> s.name(str())
+        "string"  -> s.string(value?.toString() ?: "")
+        "asset"   -> s.asset(str())
+        "symbol"  -> {
+            val sym = str()
+            val comma = sym.indexOf(',')
+            val precision = if (comma >= 0) sym.substring(0, comma).toInt() else 0
+            val code = (if (comma >= 0) sym.substring(comma + 1) else sym).toByteArray(Charsets.US_ASCII)
+            s.uint8(precision); s.rawBytes(code); repeat(7 - code.size) { s.uint8(0) }
+        }
+        "symbol_code" -> {
+            val cb = str().toByteArray(Charsets.US_ASCII)
+            s.rawBytes(cb); repeat(8 - cb.size) { s.uint8(0) }
+        }
+        "checksum256" -> {
+            val hex = str().removePrefix("0x")
+            s.rawBytes(ByteArray(32) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() })
+        }
+        "bytes" -> {
+            val hex = str().removePrefix("0x")
+            s.byteArray(ByteArray(hex.length / 2) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() })
+        }
+        "time_point"           -> s.int64(num())
+        "time_point_sec"       -> s.uint32(num())
+        "block_timestamp_type" -> s.uint32(num())
+        else -> {
+            if (structs.containsKey(fieldType)) {
+                @Suppress("UNCHECKED_CAST")
+                val nested = (value as? Map<*, *>) as? Map<String, Any?>
+                    ?: throw IllegalArgumentException("Expected object for '$fieldName' (type $fieldType)")
+                abiEncodeStruct(s, fieldType, nested, structs, aliases)
+            } else {
+                throw IllegalArgumentException("Unsupported ABI type '$fieldType' for field '$fieldName'")
+            }
+        }
+    }
 }
